@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>قارئ الأكواد | Go</title>
+    <!-- مكتبة قراءة الباركود -->
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background-color: #ff0000;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: bold;
+            color: white;
+            font-size: 18px;
+        }
+
+        h1 { margin: 0; font-size: 24px; }
+
+        .scanner-container {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #333;
+        }
+
+        /* تنسيق مكان الكاميرا */
+        #reader {
+            width: 100%;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+
+        /* تنسيق الرسالة اللي بتظهر لما يقرأ كود */
+        .scan-result {
+            background-color: #2a2a2a;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 15px;
+            display: none;
+            border-left: 4px solid #4caf50;
+        }
+
+        /* لسته الاوردرات اللي اتعملها Scan */
+        .scanned-list {
+            background-color: #1e1e1e;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #333;
+        }
+
+        .scanned-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #252525;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            border-left: 4px solid #2196f3;
+        }
+
+        .status-badge {
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .status-badge.pending { background-color: rgba(255, 152, 0, 0.2); color: #ff9800; }
+        .status-badge.delivered { background-color: rgba(76, 175, 80, 0.2); color: #4caf50; }
+
+        .action-btn {
+            background-color: #ff0000;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="logo-icon">Go</div>
+        <h1>مسح أوردرات التوصيل</h1>
+    </div>
+
+    <div class="scanner-container">
+        <h3>امسك الكود قدام الكاميرا:</h3>
+        <!-- الكاميرا هتظهر هنا -->
+        <div id="reader"></div>
+        
+        <!-- الرسالة اللي بتظهر لما يقرأ كود -->
+        <div class="scan-result" id="scanResult">
+            تم قراءة الكود: <strong id="codeText"></strong>
+        </div>
+    </div>
+
+    <div class="scanned-list">
+        <h3>الأوردرات اللي اتمسحت:</h3>
+        <div id="ordersList">
+            <!-- الاوردرات هتتكتب هنا -->
+        </div>
+    </div>
+
+    <script>
+        // داتا الاوردرات اللي اتمسحت (هنا محفوظة مؤقتاً)
+        let scannedOrders = [];
+
+        // تشغيل الكاميرا والـ Scanner
+        function startScanner() {
+            const html5QrCode = new Html5Qrcode("reader");
+
+            Html5Qrcode.getCameras().then(cameras => {
+                if (cameras && cameras.length > 0) {
+                    // نختار الكاميرا الخلفية (الرئيسية)
+                    const cameraId = cameras[0].id;
+                    
+                    html5QrCode.start(
+                        cameraId, 
+                        {
+                            fps: 10,    // سرعة القراءة
+                            qrbox: { width: 250, height: 150 } // حجم البوكس اللي بيمسك فيه الكود
+                        },
+                        (decodedText, decodedResult) => {
+                            // لما يقرأ كود بنجاح
+                            onScanSuccess(decodedText, html5QrCode);
+                        },
+                        (errorMessage) => {
+                            // لو مفيش كود قدام الكاميرا مبيعملش حاجة
+                        }
+                    ).catch(err => {
+                        console.error("خطأ في تشغيل الكاميرا: ", err);
+                    });
+                }
+            }).catch(err => {
+                document.getElementById("reader").innerHTML = "<p style='color:red;'>مفيش كاميرا متاحة على الجهاز ده.</p>";
+            });
+        }
+
+        // دالة لما الـ Scanner يقرأ كود بنجاح
+        function onScanSuccess(decodedText, scanner) {
+            // 1. نظهر الكود اللي اتعمله Scan
+            document.getElementById("scanResult").style.display = "block";
+            document.getElementById("codeText").innerText = decodedText;
+
+            // 2. نتأكد إن الكود ده متمسحش قبل كده (عشان ميتكررش)
+            if (!scannedOrders.find(o => o.id === decodedText)) {
+                // 3. نضيفه في اللسته كـ أوردر "لسه ما نزلش"
+                scannedOrders.push({
+                    id: decodedText,
+                    status: "pending"
+                });
+                renderScannedOrders();
+            }
+
+            // تشغيل صوت بسيط إن الكود اتقرأ (اختياري)
+            try {
+                let audio = new Audio('https://cdn.freesound.org/previews/640/640654_3905582-lq.mp3');
+                audio.play();
+            } catch(e) {}
+
+            // نفصل الـ Scanner ثانية ونشغله تاني عشان ميقرأش نفس الكود 10 مرات
+            scanner.stop().then(() => {
+                setTimeout(() => startScanner(), 1000);
+            });
+        }
+
+        // دالة لعرض اللسته
+        function renderScannedOrders() {
+            const listDiv = document.getElementById("ordersList");
+            listDiv.innerHTML = "";
+
+            scannedOrders.forEach(order => {
+                let statusText = order.status === "pending" ? "لسه ما نزلش" : "اتسلم ونزل";
+                
+                const item = document.createElement("div");
+                item.className = "scanned-item";
+                item.innerHTML = `
+                    <div>
+                        <strong>#${order.id}</strong>
+                    </div>
+                    <div>
+                        <span class="status-badge ${order.status}">${statusText}</span>
+                        ${order.status === 'pending' ? `<button class="action-btn" onclick="markDelivered('${order.id}')" style="margin-right:10px;">تم النزول</button>` : ''}
+                    </div>
+                `;
+                listDiv.appendChild(item);
+            });
+        }
+
+        // دالة لتغيير حالة الأوردر إنه نزل
+        function markDelivered(orderId) {
+            const order = scannedOrders.find(o => o.id === orderId);
+            if (order) {
+                order.status = "delivered";
+                renderScannedOrders();
+                
+                // هنا ممكن تبعت Request للـ API بتاعك عشان تسجل على السيرفر إن الأوردر ده نزل
+                // fetch('https://your-api.com/update', { method: 'POST', body: { id: orderId, status: 'delivered' } })
+            }
+        }
+
+        // تشغيل الكاميرا أول ما الصفحة تفتح
+        startScanner();
+    </script>
+</body>
+</html>
